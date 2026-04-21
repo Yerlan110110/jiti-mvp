@@ -10,8 +10,10 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      - key: NODE_VERSION
+        value: "20.11.0"
       - key: DATABASE_URL
-        value: "data/jiti.db" # База будет внутри контейнера (сбрасывается при деплое)
+        value: "jiti.db" # Путь без папки data, чтобы не было ошибки "unable to open database file"
       - key: CORS_ORIGINS
         value: "*"
       - key: JWT_SECRET
