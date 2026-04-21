@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: jiti-backend
+    env: node
+    region: frankfurt
+    plan: free
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm run start:prod
+    disk:
+      name: sqlite-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        value: "/data/jiti.db"
+      - key: CORS_ORIGINS
+        value: "*" # Укажи здесь URL фронтенда или админки после деплоя
+      - key: JWT_SECRET
+        generateValue: true
+      - key: ADMIN_PHONE
+        value: "+77001234567" # Укажи свой реальный номер телефона

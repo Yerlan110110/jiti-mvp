@@ -1,0 +1,45 @@
+name: jiti_app
+description: "Jiti - приложение для заказа поездок"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.11.1
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  
+  # State Management
+  flutter_bloc: ^9.1.0
+  equatable: ^2.0.7
+  
+  # Dependency Injection
+  get_it: ^8.0.3
+  
+  # Networking
+  dio: ^5.7.0
+  socket_io_client: ^3.0.2
+  
+  # Maps
+  flutter_map: ^7.0.2
+  latlong2: ^0.9.1
+  
+  # Location
+  geolocator: ^13.0.2
+  
+  # Local Storage
+  shared_preferences: ^2.3.4
+  
+  # Utils
+  intl: ^0.20.2
+  google_fonts: ^6.2.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true

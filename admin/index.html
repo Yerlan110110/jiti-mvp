@@ -1,0 +1,790 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jiti Admin — Панель управления</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --bg: #0f0f23;
+            --surface: #1a1a2e;
+            --surface-light: #25253e;
+            --primary: #6C5CE7;
+            --primary-light: #A29BFE;
+            --accent: #00CEC9;
+            --success: #00B894;
+            --warning: #FDAA5B;
+            --error: #FF6B6B;
+            --text: #FFFFFF;
+            --text-secondary: #B2B2CC;
+            --text-hint: #666680;
+            --border: #2A2A45;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            display: flex;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 260px;
+            background: var(--surface);
+            border-right: 1px solid var(--border);
+            padding: 24px 0;
+            display: flex;
+            flex-direction: column;
+            position: fixed;
+            height: 100vh;
+            z-index: 10;
+        }
+
+        .logo {
+            padding: 0 24px 32px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .logo-icon {
+            width: 44px; height: 44px;
+            background: linear-gradient(135deg, var(--primary), var(--accent));
+            border-radius: 14px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 22px;
+            box-shadow: 0 4px 20px rgba(108, 92, 231, 0.3);
+        }
+
+        .logo-text {
+            font-size: 22px;
+            font-weight: 700;
+            letter-spacing: 1px;
+        }
+
+        .logo-sub {
+            font-size: 11px;
+            color: var(--text-hint);
+            font-weight: 400;
+        }
+
+        .nav-section {
+            padding: 0 12px;
+            margin-bottom: 8px;
+        }
+
+        .nav-section-title {
+            font-size: 11px;
+            text-transform: uppercase;
+            color: var(--text-hint);
+            padding: 0 12px 8px;
+            letter-spacing: 1px;
+            font-weight: 600;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 16px;
+            cursor: pointer;
+            border-radius: 12px;
+            transition: all 0.2s;
+            color: var(--text-secondary);
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .nav-item:hover { background: var(--surface-light); color: var(--text); }
+        .nav-item.active {
+            background: rgba(108, 92, 231, 0.15);
+            color: var(--primary-light);
+        }
+
+        .nav-item .icon { font-size: 20px; width: 24px; text-align: center; }
+
+        .nav-item .badge {
+            margin-left: auto;
+            background: var(--primary);
+            color: white;
+            font-size: 11px;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-weight: 600;
+        }
+
+        /* Main Content */
+        .main {
+            margin-left: 260px;
+            flex: 1;
+            padding: 32px;
+            min-height: 100vh;
+        }
+
+        .page-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 28px;
+        }
+
+        .page-title {
+            font-size: 28px;
+            font-weight: 700;
+        }
+
+        .page-subtitle {
+            color: var(--text-secondary);
+            font-size: 14px;
+            margin-top: 4px;
+        }
+
+        .refresh-btn {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            padding: 10px 20px;
+            border-radius: 12px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        .refresh-btn:hover { border-color: var(--primary); color: var(--primary); }
+
+        /* Stats Cards */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 32px;
+        }
+
+        .stat-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 24px;
+            transition: all 0.3s;
+        }
+
+        .stat-card:hover {
+            border-color: var(--primary);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 30px rgba(108, 92, 231, 0.1);
+        }
+
+        .stat-icon {
+            width: 48px; height: 48px;
+            border-radius: 14px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 24px;
+            margin-bottom: 16px;
+        }
+
+        .stat-value {
+            font-size: 32px;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+
+        .stat-label {
+            color: var(--text-secondary);
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        /* Table */
+        .table-container {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            overflow: hidden;
+        }
+
+        .table-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 20px 24px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .table-title { font-size: 18px; font-weight: 600; }
+
+        .table-filters {
+            display: flex;
+            gap: 8px;
+        }
+
+        .filter-btn {
+            background: var(--surface-light);
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            padding: 6px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 13px;
+            transition: all 0.2s;
+        }
+
+        .filter-btn:hover, .filter-btn.active {
+            background: rgba(108, 92, 231, 0.15);
+            border-color: var(--primary);
+            color: var(--primary-light);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th {
+            text-align: left;
+            padding: 14px 24px;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-hint);
+            font-weight: 600;
+            border-bottom: 1px solid var(--border);
+        }
+
+        td {
+            padding: 16px 24px;
+            font-size: 14px;
+            border-bottom: 1px solid rgba(42, 42, 69, 0.5);
+            color: var(--text-secondary);
+        }
+
+        tr:hover td { background: rgba(37, 37, 62, 0.5); }
+
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .status-searching { background: rgba(253, 170, 91, 0.15); color: var(--warning); border: 1px solid rgba(253, 170, 91, 0.3); }
+        .status-has_responses { background: rgba(0, 206, 201, 0.15); color: var(--accent); border: 1px solid rgba(0, 206, 201, 0.3); }
+        .status-driver_selected { background: rgba(162, 155, 254, 0.15); color: var(--primary-light); border: 1px solid rgba(162, 155, 254, 0.3); }
+        .status-in_progress { background: rgba(108, 92, 231, 0.15); color: var(--primary); border: 1px solid rgba(108, 92, 231, 0.3); }
+        .status-completed { background: rgba(0, 184, 148, 0.15); color: var(--success); border: 1px solid rgba(0, 184, 148, 0.3); }
+        .status-cancelled { background: rgba(255, 107, 107, 0.15); color: var(--error); border: 1px solid rgba(255, 107, 107, 0.3); }
+        .status-created { background: rgba(178, 178, 204, 0.15); color: var(--text-secondary); border: 1px solid rgba(178, 178, 204, 0.3); }
+
+        .user-name { color: var(--text); font-weight: 500; }
+        .user-phone { color: var(--text-hint); font-size: 12px; }
+
+        .online-dot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 6px;
+        }
+        .online-dot.on { background: var(--success); box-shadow: 0 0 8px var(--success); }
+        .online-dot.off { background: var(--text-hint); }
+
+        .action-btn {
+            background: none;
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            padding: 6px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 12px;
+            transition: all 0.2s;
+        }
+
+        .action-btn:hover { border-color: var(--error); color: var(--error); }
+        .action-btn.unblock:hover { border-color: var(--success); color: var(--success); }
+
+        /* Map */
+        #monitoring-map {
+            height: 400px;
+            border-radius: 16px;
+            border: 1px solid var(--border);
+            margin-bottom: 24px;
+        }
+
+        /* Page sections */
+        .page { display: none; }
+        .page.active { display: block; }
+
+        /* Loading */
+        .loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 60px;
+            color: var(--text-hint);
+        }
+
+        .spinner {
+            width: 32px; height: 32px;
+            border: 3px solid var(--border);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-right: 12px;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .sidebar { width: 60px; padding: 16px 0; }
+            .logo-text, .logo-sub, .nav-section-title, .nav-item span, .nav-item .badge { display: none; }
+            .nav-item { justify-content: center; padding: 12px; }
+            .main { margin-left: 60px; padding: 16px; }
+            .stats-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+    </style>
+</head>
+<body>
+    <!-- Sidebar -->
+    <aside class="sidebar">
+        <div class="logo">
+            <div class="logo-icon">🚗</div>
+            <div>
+                <div class="logo-text">Jiti</div>
+                <div class="logo-sub">Admin Panel</div>
+            </div>
+        </div>
+
+        <div class="nav-section">
+            <div class="nav-section-title">Главное</div>
+            <div class="nav-item active" data-page="dashboard">
+                <span class="icon">📊</span>
+                <span>Дашборд</span>
+            </div>
+        </div>
+
+        <div class="nav-section">
+            <div class="nav-section-title">Управление</div>
+            <div class="nav-item" data-page="users">
+                <span class="icon">👤</span>
+                <span>Клиенты</span>
+                <span class="badge" id="users-count">0</span>
+            </div>
+            <div class="nav-item" data-page="drivers">
+                <span class="icon">🚙</span>
+                <span>Водители</span>
+                <span class="badge" id="drivers-count">0</span>
+            </div>
+            <div class="nav-item" data-page="orders">
+                <span class="icon">📦</span>
+                <span>Заказы</span>
+                <span class="badge" id="orders-count">0</span>
+            </div>
+        </div>
+
+        <div class="nav-section">
+            <div class="nav-section-title">Система</div>
+            <div class="nav-item" data-page="monitoring">
+                <span class="icon">🗺️</span>
+                <span>Мониторинг</span>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main">
+        <!-- Dashboard -->
+        <div id="page-dashboard" class="page active">
+            <div class="page-header">
+                <div>
+                    <div class="page-title">Дашборд</div>
+                    <div class="page-subtitle">Обзор системы в реальном времени</div>
+                </div>
+                <button class="refresh-btn" onclick="loadDashboard()">⟳ Обновить</button>
+            </div>
+
+            <div class="stats-grid" id="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon" style="background: rgba(108,92,231,0.15);">📦</div>
+                    <div class="stat-value" id="stat-total-orders">—</div>
+                    <div class="stat-label">Всего заказов</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon" style="background: rgba(253,170,91,0.15);">🔥</div>
+                    <div class="stat-value" id="stat-active-orders">—</div>
+                    <div class="stat-label">Активных заказов</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon" style="background: rgba(0,184,148,0.15);">✅</div>
+                    <div class="stat-value" id="stat-completed">—</div>
+                    <div class="stat-label">Завершённых</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon" style="background: rgba(255,107,107,0.15);">❌</div>
+                    <div class="stat-value" id="stat-cancelled">—</div>
+                    <div class="stat-label">Отменённых</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon" style="background: rgba(0,206,201,0.15);">👤</div>
+                    <div class="stat-value" id="stat-users">—</div>
+                    <div class="stat-label">Клиентов</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon" style="background: rgba(162,155,254,0.15);">🚙</div>
+                    <div class="stat-value" id="stat-drivers">—</div>
+                    <div class="stat-label">Водителей</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon" style="background: rgba(0,184,148,0.15);">🟢</div>
+                    <div class="stat-value" id="stat-online">—</div>
+                    <div class="stat-label">Онлайн водителей</div>
+                </div>
+            </div>
+
+            <div class="table-container">
+                <div class="table-header">
+                    <div class="table-title">Последние заказы</div>
+                </div>
+                <table>
+                    <thead><tr><th>ID</th><th>Клиент</th><th>Водитель</th><th>Цена</th><th>Статус</th><th>Дата</th></tr></thead>
+                    <tbody id="recent-orders"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Users -->
+        <div id="page-users" class="page">
+            <div class="page-header">
+                <div>
+                    <div class="page-title">Клиенты</div>
+                    <div class="page-subtitle">Управление клиентами системы</div>
+                </div>
+                <button class="refresh-btn" onclick="loadUsers()">⟳ Обновить</button>
+            </div>
+            <div class="table-container">
+                <table>
+                    <thead><tr><th>Имя</th><th>Телефон</th><th>Дата регистрации</th><th>Действия</th></tr></thead>
+                    <tbody id="users-table"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Drivers -->
+        <div id="page-drivers" class="page">
+            <div class="page-header">
+                <div>
+                    <div class="page-title">Водители</div>
+                    <div class="page-subtitle">Управление водителями</div>
+                </div>
+                <button class="refresh-btn" onclick="loadDrivers()">⟳ Обновить</button>
+            </div>
+            <div class="table-container">
+                <table>
+                    <thead><tr><th>Имя</th><th>Телефон</th><th>Автомобиль</th><th>Номер</th><th>Статус</th><th>Действия</th></tr></thead>
+                    <tbody id="drivers-table"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Orders -->
+        <div id="page-orders" class="page">
+            <div class="page-header">
+                <div>
+                    <div class="page-title">Заказы</div>
+                    <div class="page-subtitle">Все заказы</div>
+                </div>
+                <button class="refresh-btn" onclick="loadOrders()">⟳ Обновить</button>
+            </div>
+            <div class="table-container">
+                <div class="table-header">
+                    <div class="table-title"></div>
+                    <div class="table-filters">
+                        <button class="filter-btn active" data-filter="">Все</button>
+                        <button class="filter-btn" data-filter="searching">Поиск</button>
+                        <button class="filter-btn" data-filter="has_responses">Отклики</button>
+                        <button class="filter-btn" data-filter="in_progress">В пути</button>
+                        <button class="filter-btn" data-filter="completed">Завершённые</button>
+                        <button class="filter-btn" data-filter="cancelled">Отменённые</button>
+                    </div>
+                </div>
+                <table>
+                    <thead><tr><th>ID</th><th>Клиент</th><th>Водитель</th><th>Маршрут</th><th>Цена</th><th>Статус</th><th>Дата</th></tr></thead>
+                    <tbody id="orders-table"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Monitoring -->
+        <div id="page-monitoring" class="page">
+            <div class="page-header">
+                <div>
+                    <div class="page-title">Мониторинг</div>
+                    <div class="page-subtitle">Карта активных водителей</div>
+                </div>
+                <button class="refresh-btn" onclick="loadMonitoring()">⟳ Обновить</button>
+            </div>
+            <div id="monitoring-map"></div>
+            <div class="table-container">
+                <div class="table-header"><div class="table-title">Водители онлайн</div></div>
+                <table>
+                    <thead><tr><th>Имя</th><th>Телефон</th><th>Авто</th><th>Координаты</th></tr></thead>
+                    <tbody id="online-drivers-table"></tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        const API = '/api';
+        let adminToken = sessionStorage.getItem('admin_token');
+        let monitoringMap = null;
+        let mapMarkers = [];
+        let currentOrderFilter = '';
+
+        // Auth
+        async function ensureAdmin() {
+            if (adminToken) {
+                try {
+                    await api('/auth/me');
+                    return;
+                } catch(e) { adminToken = null; }
+            }
+            // Auto-create admin for MVP
+            const phone = prompt('Введите номер телефона админа:', '+7admin');
+            if (!phone) return;
+            await fetch(API + '/auth/send-code', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({phone}) });
+            const code = prompt('Введите код (1234):','1234');
+            const res = await fetch(API + '/auth/verify-code', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({phone, code}) });
+            const data = await res.json();
+            adminToken = data.token; sessionStorage.setItem("admin_token", adminToken);
+            sessionStorage.setItem("admin_token", adminToken);
+            // Register as admin
+            await fetch(API + '/auth/register', { method: 'POST', headers: {'Content-Type':'application/json', 'Authorization': 'Bearer '+adminToken}, body: JSON.stringify({name:'Администратор'}) });
+            const res2 = await fetch(API + '/auth/register', { method: 'POST', headers: {'Content-Type':'application/json', 'Authorization': 'Bearer '+adminToken}, body: JSON.stringify({name:'Администратор'}) });
+            const data2 = await res2.json();
+            if (data2.token) { adminToken = data2.token; sessionStorage.setItem("admin_token", adminToken); }
+            alert('Вы зарегистрированы как администратор!');
+        }
+
+        async function api(path, opts = {}) {
+            const res = await fetch(API + path, {
+                ...opts,
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + adminToken, ...opts.headers }
+            });
+            if (!res.ok) throw new Error(await res.text());
+            return res.json();
+        }
+
+        // Navigation
+        document.querySelectorAll('.nav-item').forEach(item => {
+            item.addEventListener('click', () => {
+                document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+                document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+                item.classList.add('active');
+                const page = item.dataset.page;
+                document.getElementById('page-' + page).classList.add('active');
+                loadPage(page);
+            });
+        });
+
+        // Filter buttons
+        document.querySelectorAll('.filter-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                currentOrderFilter = btn.dataset.filter;
+                loadOrders();
+            });
+        });
+
+        function loadPage(page) {
+            switch(page) {
+                case 'dashboard': loadDashboard(); break;
+                case 'users': loadUsers(); break;
+                case 'drivers': loadDrivers(); break;
+                case 'orders': loadOrders(); break;
+                case 'monitoring': loadMonitoring(); break;
+            }
+        }
+
+        // Status labels
+        const statusLabels = {
+            created: 'Создан', searching: 'Поиск', has_responses: 'Отклики',
+            driver_selected: 'Водитель выбран', in_progress: 'В пути',
+            completed: 'Завершён', cancelled: 'Отменён'
+        };
+
+        function statusBadge(status) {
+            return `<span class="status-badge status-${status}">${statusLabels[status] || status}</span>`;
+        }
+
+        function shortId(id) { return id ? id.substring(0, 8) + '…' : '—'; }
+        function formatDate(d) { return d ? d.substring(0, 16).replace('T', ' ') : '—'; }
+        
+        function escapeHtml(unsafe) {
+            if (!unsafe) return '';
+            return unsafe
+                .toString()
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
+        // Dashboard
+        async function loadDashboard() {
+            try {
+                const stats = await api('/admin/stats');
+                document.getElementById('stat-total-orders').textContent = stats.totalOrders;
+                document.getElementById('stat-active-orders').textContent = stats.activeOrders;
+                document.getElementById('stat-completed').textContent = stats.completedOrders;
+                document.getElementById('stat-cancelled').textContent = stats.cancelledOrders;
+                document.getElementById('stat-users').textContent = stats.totalUsers;
+                document.getElementById('stat-drivers').textContent = stats.totalDrivers;
+                document.getElementById('stat-online').textContent = stats.onlineDrivers;
+                document.getElementById('users-count').textContent = stats.totalUsers;
+                document.getElementById('drivers-count').textContent = stats.totalDrivers;
+                document.getElementById('orders-count').textContent = stats.totalOrders;
+
+                const ordersData = await api('/admin/orders?limit=10');
+                const tbody = document.getElementById('recent-orders');
+                tbody.innerHTML = ordersData.orders.map(o => `
+                    <tr>
+                        <td style="color:var(--text-hint);font-size:12px;font-family:monospace">${shortId(o.id)}</td>
+                        <td><div class="user-name">${escapeHtml(o.clientName) || '—'}</div><div class="user-phone">${escapeHtml(o.clientPhone) || ''}</div></td>
+                        <td><div class="user-name">${escapeHtml(o.driverName) || '—'}</div></td>
+                        <td style="color:var(--accent);font-weight:600">${(o.finalPrice || o.clientPrice || 0).toFixed(0)} ₸</td>
+                        <td>${statusBadge(o.status)}</td>
+                        <td style="color:var(--text-hint);font-size:12px">${formatDate(o.createdAt)}</td>
+                    </tr>
+                `).join('');
+            } catch(e) { console.error('Dashboard error:', e); }
+        }
+
+        // Users
+        async function loadUsers() {
+            try {
+                const data = await api('/admin/users?role=client&limit=100');
+                const tbody = document.getElementById('users-table');
+                tbody.innerHTML = data.users.map(u => `
+                    <tr>
+                        <td><div class="user-name">${escapeHtml(u.name) || '—'}</div></td>
+                        <td>${escapeHtml(u.phone)}</td>
+                        <td style="color:var(--text-hint);font-size:12px">${formatDate(u.createdAt)}</td>
+                        <td><button class="action-btn" onclick="toggleBlock('${u.id}', true)">Заблокировать</button></td>
+                    </tr>
+                `).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--text-hint);padding:40px">Нет клиентов</td></tr>';
+            } catch(e) { console.error(e); }
+        }
+
+        // Drivers
+        async function loadDrivers() {
+            try {
+                const data = await api('/admin/users?role=driver&limit=100');
+                const tbody = document.getElementById('drivers-table');
+                tbody.innerHTML = data.users.map(u => `
+                    <tr>
+                        <td><div class="user-name">${escapeHtml(u.name) || '—'}</div></td>
+                        <td>${escapeHtml(u.phone)}</td>
+                        <td>${escapeHtml(u.carBrand) || ''} ${escapeHtml(u.carModel) || ''} ${escapeHtml(u.carColor) || ''}</td>
+                        <td style="font-weight:600">${escapeHtml(u.carPlate) || '—'}</td>
+                        <td><span class="online-dot ${u.isOnline ? 'on' : 'off'}"></span>${u.isOnline ? 'Онлайн' : 'Офлайн'}</td>
+                        <td><button class="action-btn" onclick="toggleBlock('${u.id}', true)">Заблокировать</button></td>
+                    </tr>
+                `).join('') || '<tr><td colspan="6" style="text-align:center;color:var(--text-hint);padding:40px">Нет водителей</td></tr>';
+            } catch(e) { console.error(e); }
+        }
+
+        // Orders
+        async function loadOrders() {
+            try {
+                const filterParam = currentOrderFilter ? '&status=' + currentOrderFilter : '';
+                const data = await api('/admin/orders?limit=50' + filterParam);
+                const tbody = document.getElementById('orders-table');
+                tbody.innerHTML = data.orders.map(o => `
+                    <tr>
+                        <td style="color:var(--text-hint);font-size:12px;font-family:monospace">${shortId(o.id)}</td>
+                        <td><div class="user-name">${escapeHtml(o.clientName) || '—'}</div><div class="user-phone">${escapeHtml(o.clientPhone) || ''}</div></td>
+                        <td><div class="user-name">${escapeHtml(o.driverName) || '—'}</div><div class="user-phone">${escapeHtml(o.driverPhone) || ''}</div></td>
+                        <td style="font-size:11px;color:var(--text-hint)">
+                            📍 ${o.pickupLat?.toFixed(4)}, ${o.pickupLng?.toFixed(4)}<br>
+                            🏁 ${o.dropoffLat?.toFixed(4)}, ${o.dropoffLng?.toFixed(4)}
+                        </td>
+                        <td style="color:var(--accent);font-weight:600">${(o.finalPrice || o.clientPrice || 0).toFixed(0)} ₸</td>
+                        <td>${statusBadge(o.status)}</td>
+                        <td style="color:var(--text-hint);font-size:12px">${formatDate(o.createdAt)}</td>
+                    </tr>
+                `).join('') || '<tr><td colspan="7" style="text-align:center;color:var(--text-hint);padding:40px">Нет заказов</td></tr>';
+            } catch(e) { console.error(e); }
+        }
+
+        // Monitoring
+        async function loadMonitoring() {
+            if (!monitoringMap) {
+                monitoringMap = L.map('monitoring-map').setView([51.1694, 71.4491], 13);
+                L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '&copy; OpenStreetMap'
+                }).addTo(monitoringMap);
+                setTimeout(() => monitoringMap.invalidateSize(), 200);
+            }
+
+            try {
+                const data = await api('/admin/drivers/online');
+                // Clear markers
+                mapMarkers.forEach(m => monitoringMap.removeLayer(m));
+                mapMarkers = [];
+
+                const tbody = document.getElementById('online-drivers-table');
+                tbody.innerHTML = data.map(d => {
+                    if (d.lat && d.lng) {
+                        const marker = L.marker([d.lat, d.lng]).addTo(monitoringMap)
+                            .bindPopup(`<b>${d.name || 'Водитель'}</b><br>${d.carBrand || ''} ${d.carModel || ''}<br>${d.carPlate || ''}`);
+                        mapMarkers.push(marker);
+                    }
+                    return `
+                        <tr>
+                            <td class="user-name">${escapeHtml(d.name) || '—'}</td>
+                            <td>${escapeHtml(d.phone)}</td>
+                            <td>${escapeHtml(d.carBrand) || ''} ${escapeHtml(d.carModel) || ''} • ${escapeHtml(d.carPlate) || ''}</td>
+                            <td style="font-size:12px;color:var(--text-hint)">${d.lat?.toFixed(4)}, ${d.lng?.toFixed(4)}</td>
+                        </tr>
+                    `;
+                }).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--text-hint);padding:40px">Нет водителей онлайн</td></tr>';
+            } catch(e) { console.error(e); }
+        }
+
+        // Block/Unblock
+        async function toggleBlock(userId, blocked) {
+            if (!confirm(blocked ? 'Заблокировать пользователя?' : 'Разблокировать?')) return;
+            try {
+                await api('/admin/users/' + userId + '/block', {
+                    method: 'POST',
+                    body: JSON.stringify({ blocked })
+                });
+                loadUsers();
+                loadDrivers();
+            } catch(e) { alert('Ошибка: ' + e.message); }
+        }
+
+        // Auto-refresh
+        setInterval(() => {
+            const activePage = document.querySelector('.page.active')?.id?.replace('page-','');
+            if (activePage) loadPage(activePage);
+        }, 15000);
+
+        // Init
+        ensureAdmin().then(() => loadDashboard());
+    </script>
+</body>
+</html>

@@ -1,0 +1,27 @@
+{
+  "name": "jiti-backend",
+  "version": "1.0.0",
+  "description": "Jiti ride-hailing MVP backend",
+  "main": "src/index.js",
+  "engines": {
+    "node": "20.x"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "migrate": "node src/database/migrate.js",
+    "start:prod": "NODE_ENV=production node src/index.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^12.9.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.0",
+    "express": "^4.21.0",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "pg": "^8.20.0",
+    "socket.io": "^4.8.0",
+    "uuid": "^10.0.0"
+  }
+}
