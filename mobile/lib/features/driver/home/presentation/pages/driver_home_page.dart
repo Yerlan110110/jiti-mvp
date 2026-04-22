@@ -8,6 +8,8 @@ import 'package:jiti_app/core/network/api_client.dart';
 import 'package:jiti_app/core/network/socket_service.dart';
 import 'package:jiti_app/core/widgets/shared_widgets.dart';
 import 'package:jiti_app/features/auth/data/models.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class DriverHomePage extends StatefulWidget {
   final VoidCallback onHistoryTap;
@@ -24,6 +26,7 @@ class _DriverHomePageState extends State<DriverHomePage> {
   OrderModel? _activeOrder;
   final Set<String> _pendingResponseOrderIds = <String>{};
   Timer? _refreshTimer;
+  StreamSubscription<Position>? _positionStream;
   final _priceController = TextEditingController();
 
   @override
@@ -68,11 +71,34 @@ class _DriverHomePageState extends State<DriverHomePage> {
       socket.goOnline();
       _loadAvailableOrders();
       _refreshTimer = Timer.periodic(const Duration(seconds: 10), (_) => _loadAvailableOrders());
+      _startLocationTracking();
     } else {
       socket.goOffline();
       _refreshTimer?.cancel();
+      _stopLocationTracking();
       setState(() => _availableOrders.clear());
     }
+  }
+
+  Future<void> _startLocationTracking() async {
+    final permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      final requested = await Geolocator.requestPermission();
+      if (requested == LocationPermission.denied) return;
+    }
+    
+    _positionStream = Geolocator.getPositionStream(
+      locationSettings: const LocationSettings(accuracy: LocationAccuracy.high, distanceFilter: 10),
+    ).listen((Position position) {
+      if (!mounted) return;
+      final socket = context.read<SocketService>();
+      socket.emit('driver:location', {'lat': position.latitude, 'lng': position.longitude});
+    });
+  }
+
+  void _stopLocationTracking() {
+    _positionStream?.cancel();
+    _positionStream = null;
   }
 
   Future<void> _loadAvailableOrders() async {
@@ -137,6 +163,7 @@ class _DriverHomePageState extends State<DriverHomePage> {
   @override
   void dispose() {
     _refreshTimer?.cancel();
+    _stopLocationTracking();
     _priceController.dispose();
     context.read<SocketService>().off('order:new');
     context.read<SocketService>().off('order:status-changed');
@@ -327,6 +354,12 @@ class _DriverHomePageState extends State<DriverHomePage> {
             Text(_activeOrder!.clientName ?? 'Клиент', style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600)),
             Text(_activeOrder!.clientPhone ?? '', style: const TextStyle(color: Color(AppColors.textSecondary), fontSize: 13)),
           ])),
+          if (_activeOrder?.clientPhone != null)
+            IconButton(
+              icon: const Icon(Icons.phone_rounded, color: Color(AppColors.success)),
+              onPressed: () => launchUrl(Uri.parse('tel:${_activeOrder!.clientPhone}')),
+            ),
+          const SizedBox(width: 8),
           Text('${(_activeOrder!.finalPrice ?? _activeOrder!.clientPrice).toStringAsFixed(0)} ₸', style: const TextStyle(color: Color(AppColors.accent), fontSize: 22, fontWeight: FontWeight.bold)),
         ]),
         const SizedBox(height: 12),

@@ -7,6 +7,7 @@ import 'package:jiti_app/core/constants/constants.dart';
 import 'package:jiti_app/core/network/api_client.dart';
 import 'package:jiti_app/core/network/socket_service.dart';
 import 'package:jiti_app/features/auth/data/models.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class TrackingPage extends StatefulWidget {
   final String orderId;
@@ -103,6 +104,11 @@ class _TrackingPageState extends State<TrackingPage> {
               Text(_order!.driverName ?? 'Водитель', style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600)),
               Text('${_order!.carBrand ?? ''} ${_order!.carModel ?? ''} • ${_order!.carPlate ?? ''}', style: const TextStyle(color: Color(AppColors.textSecondary), fontSize: 13)),
             ])),
+            if (_order?.driverPhone != null)
+              IconButton(
+                icon: const Icon(Icons.phone_rounded, color: Color(AppColors.success)),
+                onPressed: () => launchUrl(Uri.parse('tel:${_order!.driverPhone}')),
+              ),
             Text('${(_order!.finalPrice ?? _order!.clientPrice).toStringAsFixed(0)} ₸', style: const TextStyle(color: Color(AppColors.accent), fontSize: 22, fontWeight: FontWeight.bold)),
           ]),
           const SizedBox(height: 16),
