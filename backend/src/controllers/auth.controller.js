@@ -5,7 +5,7 @@ class AuthController {
     try {
       const { phone } = req.body;
       if (!phone) return res.status(400).json({ error: 'Укажите номер телефона' });
-      const result = authService.sendCode(phone);
+      const result = await authService.sendCode(phone);
       res.json(result);
     } catch (err) { next(err); }
   }
@@ -14,21 +14,29 @@ class AuthController {
     try {
       const { phone, code } = req.body;
       if (!phone || !code) return res.status(400).json({ error: 'Укажите телефон и код' });
-      const result = authService.verifyCode(phone, code);
+      const result = await authService.verifyCode(phone, code);
+      res.json(result);
+    } catch (err) { next(err); }
+  }
+
+  async demoLogin(req, res, next) {
+    try {
+      const { role } = req.body;
+      const result = await authService.demoLogin(role);
       res.json(result);
     } catch (err) { next(err); }
   }
 
   async register(req, res, next) {
     try {
-      const result = authService.register(req.user.id, req.body);
+      const result = await authService.register(req.user.id, req.body);
       res.json(result);
     } catch (err) { next(err); }
   }
 
   async getMe(req, res, next) {
     try {
-      const user = authService.getUser(req.user.id);
+      const user = await authService.getUser(req.user.id);
       res.json(user);
     } catch (err) { next(err); }
   }

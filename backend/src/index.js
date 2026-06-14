@@ -11,6 +11,7 @@ const { migrate } = require('./database/migrate');
 const { errorHandler } = require('./middleware/errorHandler');
 const { apiLimiter } = require('./middleware/rateLimit');
 const { setupSocket } = require('./socket/index');
+const { closeDb } = require('./config/database');
 
 // Routes
 const authRoutes = require('./routes/auth.routes');
@@ -79,11 +80,11 @@ app.use(errorHandler);
 // Setup Socket.IO
 setupSocket(io);
 
-// Run migrations and start server
-migrate();
+async function start() {
+  await migrate();
 
-server.listen(config.port, '0.0.0.0', () => {
-  console.log(`
+  server.listen(config.port, '0.0.0.0', () => {
+    console.log(`
   ╔══════════════════════════════════════╗
   ║     🚗 Jiti Backend Started 🚗      ║
   ║                                      ║
@@ -93,16 +94,20 @@ server.listen(config.port, '0.0.0.0', () => {
   ║   SMS:  ${config.smsMock ? 'MOCK (code: ' + config.smsMockCode + ')' : 'LIVE'}          ║
   ╚══════════════════════════════════════╝
   `);
+  });
+}
+
+start().catch((error) => {
+  console.error('Failed to start server:', error);
+  process.exit(1);
 });
 
 // Graceful shutdown
 function shutdown(signal) {
   console.log(`\n⏹️  ${signal} received. Shutting down gracefully...`);
-  server.close(() => {
+  server.close(async () => {
     try {
-      const { getDb } = require('./config/database');
-      const db = getDb();
-      if (db && typeof db.close === 'function') db.close();
+      await closeDb();
     } catch (_) {}
     console.log('✅ Server closed.');
     process.exit(0);

@@ -16,8 +16,8 @@ class AdminController {
       query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
       params.push(parseInt(limit), parseInt(offset));
 
-      const users = db.prepare(query).all(...params);
-      const total = db.prepare('SELECT COUNT(*) as cnt FROM users' + (role ? ' WHERE role = ?' : '')).get(...(role ? [role] : []));
+      const users = await db.all(query, params);
+      const total = await db.get('SELECT COUNT(*) as cnt FROM users' + (role ? ' WHERE role = ?' : ''), role ? [role] : []);
 
       res.json({
         users: users.map(u => authService._sanitizeUser(u)),
@@ -30,8 +30,7 @@ class AdminController {
     try {
       const db = getDb();
       const { blocked } = req.body;
-      db.prepare("UPDATE users SET is_blocked = ?, updated_at = datetime('now') WHERE id = ?")
-        .run(blocked ? 1 : 0, req.params.id);
+      await db.run("UPDATE users SET is_blocked = ?, updated_at = datetime('now') WHERE id = ?", [blocked ? 1 : 0, req.params.id]);
       res.json({ success: true });
     } catch (err) { next(err); }
   }
@@ -40,11 +39,11 @@ class AdminController {
     try {
       const locations = locationService.getAllOnlineDriverLocations();
       const db = getDb();
-      const drivers = locations.map(loc => {
-        const driver = db.prepare('SELECT * FROM users WHERE id = ?').get(loc.driverId);
+      const drivers = await Promise.all(locations.map(async loc => {
+        const driver = await db.get('SELECT * FROM users WHERE id = ?', [loc.driverId]);
         return driver ? { ...authService._sanitizeUser(driver), lat: loc.lat, lng: loc.lng } : null;
-      }).filter(Boolean);
-      res.json(drivers);
+      }));
+      res.json(drivers.filter(Boolean));
     } catch (err) { next(err); }
   }
 }

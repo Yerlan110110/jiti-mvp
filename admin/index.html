@@ -296,6 +296,7 @@
         }
         .online-dot.on { background: var(--success); box-shadow: 0 0 8px var(--success); }
         .online-dot.off { background: var(--text-hint); }
+        .blocked-label { color: var(--error); font-weight: 700; }
 
         .action-btn {
             background: none;
@@ -310,6 +311,7 @@
         }
 
         .action-btn:hover { border-color: var(--error); color: var(--error); }
+        .action-btn.unblock { color: var(--success); }
         .action-btn.unblock:hover { border-color: var(--success); color: var(--success); }
 
         /* Map */
@@ -473,7 +475,7 @@
             </div>
             <div class="table-container">
                 <table>
-                    <thead><tr><th>Имя</th><th>Телефон</th><th>Дата регистрации</th><th>Действия</th></tr></thead>
+                    <thead><tr><th>Имя</th><th>Телефон</th><th>Статус</th><th>Действия</th></tr></thead>
                     <tbody id="users-table"></tbody>
                 </table>
             </div>
@@ -545,7 +547,7 @@
     </main>
 
     <script>
-        const API = '/api';
+        const API = location.protocol === 'file:' ? 'http://localhost:3000/api' : '/api';
         let adminToken = sessionStorage.getItem('admin_token');
         let monitoringMap = null;
         let mapMarkers = [];
@@ -559,21 +561,23 @@
                     return;
                 } catch(e) { adminToken = null; }
             }
-            // Auto-create admin for MVP
-            const phone = prompt('Введите номер телефона админа:', '+7admin');
+            const phone = prompt('Введите номер телефона админа:', '+77001234567');
             if (!phone) return;
             await fetch(API + '/auth/send-code', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({phone}) });
             const code = prompt('Введите код (1234):','1234');
             const res = await fetch(API + '/auth/verify-code', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({phone, code}) });
             const data = await res.json();
+            if (!res.ok) {
+                alert(data.error || 'Не удалось войти в админку');
+                return;
+            }
             adminToken = data.token; sessionStorage.setItem("admin_token", adminToken);
-            sessionStorage.setItem("admin_token", adminToken);
-            // Register as admin
-            await fetch(API + '/auth/register', { method: 'POST', headers: {'Content-Type':'application/json', 'Authorization': 'Bearer '+adminToken}, body: JSON.stringify({name:'Администратор'}) });
-            const res2 = await fetch(API + '/auth/register', { method: 'POST', headers: {'Content-Type':'application/json', 'Authorization': 'Bearer '+adminToken}, body: JSON.stringify({name:'Администратор'}) });
-            const data2 = await res2.json();
-            if (data2.token) { adminToken = data2.token; sessionStorage.setItem("admin_token", adminToken); }
-            alert('Вы зарегистрированы как администратор!');
+            const me = await api('/auth/me');
+            if (me.role !== 'admin') {
+                sessionStorage.removeItem('admin_token');
+                adminToken = null;
+                alert('Этот номер не администратор. Для локального демо используйте +77001234567.');
+            }
         }
 
         async function api(path, opts = {}) {
@@ -681,8 +685,8 @@
                     <tr>
                         <td><div class="user-name">${escapeHtml(u.name) || '—'}</div></td>
                         <td>${escapeHtml(u.phone)}</td>
-                        <td style="color:var(--text-hint);font-size:12px">${formatDate(u.createdAt)}</td>
-                        <td><button class="action-btn" onclick="toggleBlock('${u.id}', true)">Заблокировать</button></td>
+                        <td>${userStatus(u)}</td>
+                        <td>${blockButton(u)}</td>
                     </tr>
                 `).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--text-hint);padding:40px">Нет клиентов</td></tr>';
             } catch(e) { console.error(e); }
@@ -699,8 +703,8 @@
                         <td>${escapeHtml(u.phone)}</td>
                         <td>${escapeHtml(u.carBrand) || ''} ${escapeHtml(u.carModel) || ''} ${escapeHtml(u.carColor) || ''}</td>
                         <td style="font-weight:600">${escapeHtml(u.carPlate) || '—'}</td>
-                        <td><span class="online-dot ${u.isOnline ? 'on' : 'off'}"></span>${u.isOnline ? 'Онлайн' : 'Офлайн'}</td>
-                        <td><button class="action-btn" onclick="toggleBlock('${u.id}', true)">Заблокировать</button></td>
+                        <td>${userStatus(u)}</td>
+                        <td>${blockButton(u)}</td>
                     </tr>
                 `).join('') || '<tr><td colspan="6" style="text-align:center;color:var(--text-hint);padding:40px">Нет водителей</td></tr>';
             } catch(e) { console.error(e); }
@@ -718,8 +722,9 @@
                         <td><div class="user-name">${escapeHtml(o.clientName) || '—'}</div><div class="user-phone">${escapeHtml(o.clientPhone) || ''}</div></td>
                         <td><div class="user-name">${escapeHtml(o.driverName) || '—'}</div><div class="user-phone">${escapeHtml(o.driverPhone) || ''}</div></td>
                         <td style="font-size:11px;color:var(--text-hint)">
-                            📍 ${o.pickupLat?.toFixed(4)}, ${o.pickupLng?.toFixed(4)}<br>
-                            🏁 ${o.dropoffLat?.toFixed(4)}, ${o.dropoffLng?.toFixed(4)}
+                            📍 ${escapeHtml(o.pickupAddress) || '—'}<br>
+                            🏁 ${escapeHtml(o.dropoffAddress) || '—'}<br>
+                            ${escapeHtml(o.comment) || ''}
                         </td>
                         <td style="color:var(--accent);font-weight:600">${(o.finalPrice || o.clientPrice || 0).toFixed(0)} ₸</td>
                         <td>${statusBadge(o.status)}</td>
@@ -765,6 +770,18 @@
         }
 
         // Block/Unblock
+        function userStatus(user) {
+            if (user.isBlocked) return '<span class="blocked-label">Заблокирован</span>';
+            return `<span class="online-dot ${user.isOnline ? 'on' : 'off'}"></span>${user.isOnline ? 'Онлайн' : 'Офлайн'}`;
+        }
+
+        function blockButton(user) {
+            const nextBlocked = !user.isBlocked;
+            const label = user.isBlocked ? 'Разблокировать' : 'Заблокировать';
+            const className = user.isBlocked ? 'action-btn unblock' : 'action-btn';
+            return `<button class="${className}" onclick="toggleBlock('${user.id}', ${nextBlocked})">${label}</button>`;
+        }
+
         async function toggleBlock(userId, blocked) {
             if (!confirm(blocked ? 'Заблокировать пользователя?' : 'Разблокировать?')) return;
             try {

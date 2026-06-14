@@ -4,7 +4,7 @@ const { getDb } = require('../config/database');
 const driverLocations = new Map();
 
 class LocationService {
-  updateDriverLocation(driverId, lat, lng) {
+  async updateDriverLocation(driverId, lat, lng) {
     driverLocations.set(driverId, {
       lat,
       lng,
@@ -13,8 +13,7 @@ class LocationService {
 
     // Also update in DB for persistence
     const db = getDb();
-    db.prepare("UPDATE users SET latitude = ?, longitude = ?, updated_at = datetime('now') WHERE id = ?")
-      .run(lat, lng, driverId);
+    await db.run("UPDATE users SET latitude = ?, longitude = ?, updated_at = datetime('now') WHERE id = ?", [lat, lng, driverId]);
   }
 
   getDriverLocation(driverId) {
@@ -32,13 +31,28 @@ class LocationService {
     return result;
   }
 
-  setDriverOnline(driverId, online) {
+  async setDriverOnline(driverId, online) {
     const db = getDb();
-    db.prepare("UPDATE users SET is_online = ?, updated_at = datetime('now') WHERE id = ?")
-      .run(online ? 1 : 0, driverId);
+    const defaultLat = 52.1908;
+    const defaultLng = 61.2006;
+    await db.run(`
+      UPDATE users
+      SET is_online = ?,
+          latitude = CASE WHEN ? = 1 THEN COALESCE(latitude, ?) ELSE latitude END,
+          longitude = CASE WHEN ? = 1 THEN COALESCE(longitude, ?) ELSE longitude END,
+          updated_at = datetime('now')
+      WHERE id = ?
+    `, [online ? 1 : 0, online ? 1 : 0, defaultLat, online ? 1 : 0, defaultLng, driverId]);
 
     if (!online) {
       driverLocations.delete(driverId);
+    } else if (!driverLocations.has(driverId)) {
+      const driver = await db.get('SELECT latitude, longitude FROM users WHERE id = ?', [driverId]);
+      driverLocations.set(driverId, {
+        lat: driver?.latitude || defaultLat,
+        lng: driver?.longitude || defaultLng,
+        updatedAt: Date.now(),
+      });
     }
   }
 

@@ -27,7 +27,7 @@ const env = {
       ? process.env.CORS_ORIGINS.split(',').map(s => s.trim())
       : ['http://localhost:3000'],
 
-  adminPhone: process.env.ADMIN_PHONE || null,
+  adminPhone: process.env.ADMIN_PHONE || '+77001234567',
 };
 
 module.exports = env;

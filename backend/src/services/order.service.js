@@ -13,11 +13,24 @@ const STATUS_FLOW = {
 };
 
 class OrderService {
-  createOrder(clientId, data) {
+  async createOrder(clientId, data) {
     const db = getDb();
-    const { pickupLat, pickupLng, dropoffLat, dropoffLng, clientPrice } = data;
+    const {
+      pickupLat = 52.1908,
+      pickupLng = 61.2006,
+      dropoffLat = 52.1908,
+      dropoffLng = 61.2006,
+      pickupAddress,
+      dropoffAddress,
+      comment,
+      clientPrice,
+    } = data;
 
-    if (!pickupLat || !pickupLng || !dropoffLat || !dropoffLng || !clientPrice) {
+    const cleanPickupAddress = pickupAddress ? String(pickupAddress).trim().substring(0, 160) : '';
+    const cleanDropoffAddress = dropoffAddress ? String(dropoffAddress).trim().substring(0, 160) : '';
+    const cleanComment = comment ? String(comment).trim().substring(0, 240) : null;
+
+    if (!cleanPickupAddress || !cleanDropoffAddress || !clientPrice) {
       throw Object.assign(new Error('Все поля обязательны'), { status: 400 });
     }
 
@@ -30,22 +43,25 @@ class OrderService {
       throw Object.assign(new Error('Координаты и цена должны быть числами'), { status: 400 });
     }
 
-    if (price <= 0 || price > 1000000) {
-      throw Object.assign(new Error('Некорректная цена'), { status: 400 });
+    if (price < 500 || price > 1000000) {
+      throw Object.assign(new Error('Цена должна быть от 500 ₸'), { status: 400 });
     }
 
     const id = uuidv4();
-    db.prepare(`
-      INSERT INTO orders (id, client_id, pickup_lat, pickup_lng, dropoff_lat, dropoff_lng, client_price, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 'searching')
-    `).run(id, clientId, lat1, lng1, lat2, lng2, price);
+    await db.run(`
+      INSERT INTO orders (
+        id, client_id, pickup_address, dropoff_address, comment,
+        pickup_lat, pickup_lng, dropoff_lat, dropoff_lng, client_price, status
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'searching')
+    `, [id, clientId, cleanPickupAddress, cleanDropoffAddress, cleanComment, lat1, lng1, lat2, lng2, price]);
 
     return this.getOrder(id);
   }
 
-  getOrder(orderId, requesterId) {
+  async getOrder(orderId, requesterId) {
     const db = getDb();
-    const order = db.prepare(`
+    const order = await db.get(`
       SELECT o.*, 
         uc.name as client_name, uc.phone as client_phone,
         ud.name as driver_name, ud.phone as driver_phone,
@@ -54,13 +70,13 @@ class OrderService {
       LEFT JOIN users uc ON o.client_id = uc.id
       LEFT JOIN users ud ON o.driver_id = ud.id
       WHERE o.id = ?
-    `).get(orderId);
+    `, [orderId]);
 
     if (!order) throw Object.assign(new Error('Заказ не найден'), { status: 404 });
 
     // Access control: only participants or admin can view
     if (requesterId) {
-      const requester = db.prepare('SELECT role FROM users WHERE id = ?').get(requesterId);
+      const requester = await db.get('SELECT role FROM users WHERE id = ?', [requesterId]);
       const isParticipant = order.client_id === requesterId || order.driver_id === requesterId;
       const isAdmin = requester && requester.role === 'admin';
       if (!isParticipant && !isAdmin) {
@@ -71,22 +87,22 @@ class OrderService {
     return this._formatOrder(order);
   }
 
-  getAvailableOrders() {
+  async getAvailableOrders() {
     const db = getDb();
-    const orders = db.prepare(`
-      SELECT o.*, uc.name as client_name, uc.phone as client_phone
+    const orders = await db.all(`
+      SELECT o.*, uc.name as client_name
       FROM orders o
       LEFT JOIN users uc ON o.client_id = uc.id
       WHERE o.status IN ('searching', 'has_responses')
       ORDER BY o.created_at DESC
-    `).all();
+    `);
 
     return orders.map(o => this._formatOrder(o));
   }
 
-  getClientOrders(clientId) {
+  async getClientOrders(clientId) {
     const db = getDb();
-    const orders = db.prepare(`
+    const orders = await db.all(`
       SELECT o.*,
         ud.name as driver_name, ud.phone as driver_phone,
         ud.car_brand, ud.car_model, ud.car_color, ud.car_plate
@@ -94,30 +110,30 @@ class OrderService {
       LEFT JOIN users ud ON o.driver_id = ud.id
       WHERE o.client_id = ?
       ORDER BY o.created_at DESC
-    `).all(clientId);
+    `, [clientId]);
 
     return orders.map(o => this._formatOrder(o));
   }
 
-  getDriverOrders(driverId) {
+  async getDriverOrders(driverId) {
     const db = getDb();
-    const orders = db.prepare(`
+    const orders = await db.all(`
       SELECT o.*, uc.name as client_name, uc.phone as client_phone
       FROM orders o
       LEFT JOIN users uc ON o.client_id = uc.id
       WHERE o.driver_id = ?
       ORDER BY o.created_at DESC
-    `).all(driverId);
+    `, [driverId]);
 
     return orders.map(o => this._formatOrder(o));
   }
 
-  getActiveOrder(userId, role) {
+  async getActiveOrder(userId, role) {
     const db = getDb();
     // Fixed: no template literal in SQL — use separate prepared statements
     let order;
     if (role === 'driver') {
-      order = db.prepare(`
+      order = await db.get(`
         SELECT o.*,
           uc.name as client_name, uc.phone as client_phone,
           ud.name as driver_name, ud.phone as driver_phone,
@@ -127,9 +143,9 @@ class OrderService {
         LEFT JOIN users ud ON o.driver_id = ud.id
         WHERE o.driver_id = ? AND o.status IN ('searching', 'has_responses', 'driver_selected', 'in_progress')
         ORDER BY o.created_at DESC LIMIT 1
-      `).get(userId);
+      `, [userId]);
     } else {
-      order = db.prepare(`
+      order = await db.get(`
         SELECT o.*,
           uc.name as client_name, uc.phone as client_phone,
           ud.name as driver_name, ud.phone as driver_phone,
@@ -139,15 +155,15 @@ class OrderService {
         LEFT JOIN users ud ON o.driver_id = ud.id
         WHERE o.client_id = ? AND o.status IN ('searching', 'has_responses', 'driver_selected', 'in_progress')
         ORDER BY o.created_at DESC LIMIT 1
-      `).get(userId);
+      `, [userId]);
     }
 
     return order ? this._formatOrder(order) : null;
   }
 
-  respondToOrder(orderId, driverId, proposedPrice) {
+  async respondToOrder(orderId, driverId, proposedPrice) {
     const db = getDb();
-    const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(orderId);
+    const order = await db.get('SELECT * FROM orders WHERE id = ?', [orderId]);
 
     if (!order) throw Object.assign(new Error('Заказ не найден'), { status: 404 });
     if (!['searching', 'has_responses'].includes(order.status)) {
@@ -160,26 +176,25 @@ class OrderService {
       throw Object.assign(new Error('Некорректная цена'), { status: 400 });
     }
 
-    const existing = db.prepare(
+    const existing = await db.get(
       'SELECT * FROM order_responses WHERE order_id = ? AND driver_id = ?'
-    ).get(orderId, driverId);
+    , [orderId, driverId]);
 
     if (existing) {
       throw Object.assign(new Error('Вы уже откликнулись'), { status: 400 });
     }
 
     const id = uuidv4();
-    db.prepare(
+    await db.run(
       'INSERT INTO order_responses (id, order_id, driver_id, proposed_price) VALUES (?, ?, ?, ?)'
-    ).run(id, orderId, driverId, price);
+    , [id, orderId, driverId, price]);
 
     // Update order status
     if (order.status === 'searching') {
-      db.prepare("UPDATE orders SET status = 'has_responses', updated_at = datetime('now') WHERE id = ?")
-        .run(orderId);
+      await db.run("UPDATE orders SET status = 'has_responses', updated_at = datetime('now') WHERE id = ?", [orderId]);
     }
 
-    const driver = db.prepare('SELECT * FROM users WHERE id = ?').get(driverId);
+    const driver = await db.get('SELECT * FROM users WHERE id = ?', [driverId]);
     return {
       id,
       orderId,
@@ -195,29 +210,29 @@ class OrderService {
     };
   }
 
-  getOrderResponses(orderId, requesterId) {
+  async getOrderResponses(orderId, requesterId) {
     const db = getDb();
 
     // Access control: only order owner or responding drivers can see responses
     if (requesterId) {
-      const order = db.prepare('SELECT client_id FROM orders WHERE id = ?').get(orderId);
-      const requester = db.prepare('SELECT role FROM users WHERE id = ?').get(requesterId);
+      const order = await db.get('SELECT client_id FROM orders WHERE id = ?', [orderId]);
+      const requester = await db.get('SELECT role FROM users WHERE id = ?', [requesterId]);
       const isOwner = order && order.client_id === requesterId;
-      const isRespondingDriver = db.prepare('SELECT 1 FROM order_responses WHERE order_id = ? AND driver_id = ?').get(orderId, requesterId);
+      const isRespondingDriver = await db.get('SELECT 1 FROM order_responses WHERE order_id = ? AND driver_id = ?', [orderId, requesterId]);
       const isAdmin = requester && requester.role === 'admin';
       if (!isOwner && !isRespondingDriver && !isAdmin) {
         throw Object.assign(new Error('Нет доступа к откликам'), { status: 403 });
       }
     }
 
-    const responses = db.prepare(`
+    const responses = await db.all(`
       SELECT r.*, u.name as driver_name, u.phone as driver_phone,
         u.car_brand, u.car_model, u.car_color, u.car_plate
       FROM order_responses r
       JOIN users u ON r.driver_id = u.id
       WHERE r.order_id = ?
       ORDER BY r.created_at DESC
-    `).all(orderId);
+    `, [orderId]);
 
     return responses.map(r => ({
       id: r.id,
@@ -235,9 +250,9 @@ class OrderService {
     }));
   }
 
-  selectDriver(orderId, clientId, responseId) {
+  async selectDriver(orderId, clientId, responseId) {
     const db = getDb();
-    const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(orderId);
+    const order = await db.get('SELECT * FROM orders WHERE id = ?', [orderId]);
 
     if (!order) throw Object.assign(new Error('Заказ не найден'), { status: 404 });
     if (order.client_id !== clientId) {
@@ -247,36 +262,59 @@ class OrderService {
       throw Object.assign(new Error('Невозможно выбрать водителя'), { status: 400 });
     }
 
-    const response = db.prepare('SELECT * FROM order_responses WHERE id = ? AND order_id = ?')
-      .get(responseId, orderId);
+    const response = await db.get('SELECT * FROM order_responses WHERE id = ? AND order_id = ?', [responseId, orderId]);
 
     if (!response) throw Object.assign(new Error('Отклик не найден'), { status: 404 });
 
     // Accept this response, reject others
-    db.prepare("UPDATE order_responses SET status = 'accepted' WHERE id = ?").run(responseId);
-    db.prepare("UPDATE order_responses SET status = 'rejected' WHERE order_id = ? AND id != ?")
-      .run(orderId, responseId);
+    await db.run("UPDATE order_responses SET status = 'accepted' WHERE id = ?", [responseId]);
+    await db.run("UPDATE order_responses SET status = 'rejected' WHERE order_id = ? AND id != ?", [orderId, responseId]);
 
     // Update order
-    db.prepare(`
+    await db.run(`
       UPDATE orders SET driver_id = ?, final_price = ?, status = 'driver_selected', updated_at = datetime('now')
       WHERE id = ?
-    `).run(response.driver_id, response.proposed_price, orderId);
+    `, [response.driver_id, response.proposed_price, orderId]);
 
     return this.getOrder(orderId);
   }
 
-  startTrip(orderId, driverId) {
+  async acceptOrder(orderId, driverId) {
+    const db = getDb();
+    const order = await db.get('SELECT * FROM orders WHERE id = ?', [orderId]);
+
+    if (!order) throw Object.assign(new Error('Заказ не найден'), { status: 404 });
+    if (!['searching', 'has_responses'].includes(order.status)) {
+      throw Object.assign(new Error('Заказ уже недоступен'), { status: 400 });
+    }
+
+    const driver = await db.get('SELECT * FROM users WHERE id = ? AND role = ?', [driverId, 'driver']);
+    if (!driver) throw Object.assign(new Error('Водитель не найден'), { status: 404 });
+
+    const update = await db.run(`
+      UPDATE orders
+      SET driver_id = ?, final_price = client_price, status = 'driver_selected', updated_at = datetime('now')
+      WHERE id = ? AND status IN ('searching', 'has_responses')
+    `, [driverId, orderId]);
+    if (update.changes === 0) {
+      throw Object.assign(new Error('Заказ уже принял другой водитель'), { status: 409 });
+    }
+
+    await db.run("UPDATE order_responses SET status = 'rejected' WHERE order_id = ?", [orderId]);
+    return this.getOrder(orderId);
+  }
+
+  async startTrip(orderId, driverId) {
     return this._updateStatus(orderId, driverId, 'driver', 'in_progress');
   }
 
-  completeTrip(orderId, driverId) {
+  async completeTrip(orderId, driverId) {
     return this._updateStatus(orderId, driverId, 'driver', 'completed');
   }
 
-  cancelOrder(orderId, userId) {
+  async cancelOrder(orderId, userId) {
     const db = getDb();
-    const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(orderId);
+    const order = await db.get('SELECT * FROM orders WHERE id = ?', [orderId]);
     if (!order) throw Object.assign(new Error('Заказ не найден'), { status: 404 });
 
     if (order.client_id !== userId && order.driver_id !== userId) {
@@ -288,13 +326,12 @@ class OrderService {
       throw Object.assign(new Error('Невозможно отменить'), { status: 400 });
     }
 
-    db.prepare("UPDATE orders SET status = 'cancelled', updated_at = datetime('now') WHERE id = ?")
-      .run(orderId);
+    await db.run("UPDATE orders SET status = 'cancelled', updated_at = datetime('now') WHERE id = ?", [orderId]);
     return this.getOrder(orderId);
   }
 
   // Admin methods
-  getAllOrders(status, limit = 50, offset = 0) {
+  async getAllOrders(status, limit = 50, offset = 0) {
     const db = getDb();
 
     // Sanitize limit/offset
@@ -318,30 +355,30 @@ class OrderService {
     query += ' ORDER BY o.created_at DESC LIMIT ? OFFSET ?';
     params.push(safeLimit, safeOffset);
 
-    const orders = db.prepare(query).all(...params);
-    const total = db.prepare(
+    const orders = await db.all(query, params);
+    const total = await db.get(
       status ? 'SELECT COUNT(*) as cnt FROM orders WHERE status = ?' : 'SELECT COUNT(*) as cnt FROM orders'
-    ).get(...(status ? [status] : []));
+    , status ? [status] : []);
 
     return { orders: orders.map(o => this._formatOrder(o)), total: total.cnt };
   }
 
-  getStats() {
+  async getStats() {
     const db = getDb();
     return {
-      totalOrders: db.prepare('SELECT COUNT(*) as cnt FROM orders').get().cnt,
-      activeOrders: db.prepare("SELECT COUNT(*) as cnt FROM orders WHERE status IN ('searching','has_responses','driver_selected','in_progress')").get().cnt,
-      completedOrders: db.prepare("SELECT COUNT(*) as cnt FROM orders WHERE status = 'completed'").get().cnt,
-      cancelledOrders: db.prepare("SELECT COUNT(*) as cnt FROM orders WHERE status = 'cancelled'").get().cnt,
-      totalUsers: db.prepare("SELECT COUNT(*) as cnt FROM users WHERE role = 'client'").get().cnt,
-      totalDrivers: db.prepare("SELECT COUNT(*) as cnt FROM users WHERE role = 'driver'").get().cnt,
-      onlineDrivers: db.prepare("SELECT COUNT(*) as cnt FROM users WHERE role = 'driver' AND is_online = 1").get().cnt,
+      totalOrders: (await db.get('SELECT COUNT(*) as cnt FROM orders')).cnt,
+      activeOrders: (await db.get("SELECT COUNT(*) as cnt FROM orders WHERE status IN ('searching','has_responses','driver_selected','in_progress')")).cnt,
+      completedOrders: (await db.get("SELECT COUNT(*) as cnt FROM orders WHERE status = 'completed'")).cnt,
+      cancelledOrders: (await db.get("SELECT COUNT(*) as cnt FROM orders WHERE status = 'cancelled'")).cnt,
+      totalUsers: (await db.get("SELECT COUNT(*) as cnt FROM users WHERE role = 'client'")).cnt,
+      totalDrivers: (await db.get("SELECT COUNT(*) as cnt FROM users WHERE role = 'driver'")).cnt,
+      onlineDrivers: (await db.get("SELECT COUNT(*) as cnt FROM users WHERE role = 'driver' AND is_online = 1")).cnt,
     };
   }
 
-  _updateStatus(orderId, userId, role, newStatus) {
+  async _updateStatus(orderId, userId, role, newStatus) {
     const db = getDb();
-    const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(orderId);
+    const order = await db.get('SELECT * FROM orders WHERE id = ?', [orderId]);
     if (!order) throw Object.assign(new Error('Заказ не найден'), { status: 404 });
 
     // Fixed: no template literal — direct comparison
@@ -355,8 +392,7 @@ class OrderService {
       throw Object.assign(new Error(`Невозможно сменить статус с ${order.status} на ${newStatus}`), { status: 400 });
     }
 
-    db.prepare("UPDATE orders SET status = ?, updated_at = datetime('now') WHERE id = ?")
-      .run(newStatus, orderId);
+    await db.run("UPDATE orders SET status = ?, updated_at = datetime('now') WHERE id = ?", [newStatus, orderId]);
     return this.getOrder(orderId);
   }
 
@@ -373,6 +409,9 @@ class OrderService {
       carModel: o.car_model || null,
       carColor: o.car_color || null,
       carPlate: o.car_plate || null,
+      pickupAddress: o.pickup_address || null,
+      dropoffAddress: o.dropoff_address || null,
+      comment: o.comment || null,
       pickupLat: o.pickup_lat,
       pickupLng: o.pickup_lng,
       dropoffLat: o.dropoff_lat,

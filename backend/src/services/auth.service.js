@@ -10,7 +10,7 @@ const ALLOWED_ROLES = ['client', 'driver'];
 const PHONE_REGEX = /^\+\d{10,15}$/;
 
 class AuthService {
-  sendCode(phone) {
+  async sendCode(phone) {
     if (!PHONE_REGEX.test(phone)) {
       throw Object.assign(new Error('Неверный формат телефона. Пример: +77001234567'), { status: 400 });
     }
@@ -21,17 +21,17 @@ class AuthService {
     const id = uuidv4();
 
     // Cleanup expired codes for this phone
-    db.prepare('DELETE FROM verification_codes WHERE phone = ? AND (used = 1 OR expires_at < datetime(?))').run(phone, new Date().toISOString());
+    await db.run('DELETE FROM verification_codes WHERE phone = ? AND (used = 1 OR expires_at < ?)', [phone, new Date().toISOString()]);
 
     // Limit active codes per phone (max 3)
-    const activeCount = db.prepare('SELECT COUNT(*) as cnt FROM verification_codes WHERE phone = ? AND used = 0').get(phone);
+    const activeCount = await db.get('SELECT COUNT(*) as cnt FROM verification_codes WHERE phone = ? AND used = 0', [phone]);
     if (activeCount.cnt >= 3) {
       throw Object.assign(new Error('Слишком много запросов кода, попробуйте позже'), { status: 429 });
     }
 
-    db.prepare(
+    await db.run(
       'INSERT INTO verification_codes (id, phone, code, expires_at) VALUES (?, ?, ?, ?)'
-    ).run(id, phone, code, expiresAt);
+    , [id, phone, code, expiresAt]);
 
     // Only log SMS code in development
     if (!config.isProduction) {
@@ -41,7 +41,7 @@ class AuthService {
     return { success: true, message: 'Код отправлен' };
   }
 
-  verifyCode(phone, code) {
+  async verifyCode(phone, code) {
     if (!PHONE_REGEX.test(phone)) {
       throw Object.assign(new Error('Неверный формат телефона'), { status: 400 });
     }
@@ -51,32 +51,32 @@ class AuthService {
     }
 
     const db = getDb();
-    const record = db.prepare(
+    const record = await db.get(
       'SELECT * FROM verification_codes WHERE phone = ? AND code = ? AND used = 0 ORDER BY created_at DESC LIMIT 1'
-    ).get(phone, code);
+    , [phone, code]);
 
     if (!record) {
       throw Object.assign(new Error('Неверный код'), { status: 400 });
     }
 
     if (new Date(record.expires_at) < new Date()) {
-      db.prepare('DELETE FROM verification_codes WHERE id = ?').run(record.id);
+      await db.run('DELETE FROM verification_codes WHERE id = ?', [record.id]);
       throw Object.assign(new Error('Код истёк'), { status: 400 });
     }
 
     // Mark code as used
-    db.prepare('UPDATE verification_codes SET used = 1 WHERE id = ?').run(record.id);
+    await db.run('UPDATE verification_codes SET used = 1 WHERE id = ?', [record.id]);
 
     // Check if user exists
-    let user = db.prepare('SELECT * FROM users WHERE phone = ?').get(phone);
+    let user = await db.get('SELECT * FROM users WHERE phone = ?', [phone]);
     const isNewUser = !user;
 
     if (isNewUser) {
       const userId = uuidv4();
       // Auto-assign admin role if phone matches ADMIN_PHONE
       const role = config.adminPhone && phone === config.adminPhone ? 'admin' : 'client';
-      db.prepare('INSERT INTO users (id, phone, role) VALUES (?, ?, ?)').run(userId, phone, role);
-      user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
+      await db.run('INSERT INTO users (id, phone, role) VALUES (?, ?, ?)', [userId, phone, role]);
+      user = await db.get('SELECT * FROM users WHERE id = ?', [userId]);
     }
 
     const token = jwt.sign({ userId: user.id, role: user.role }, config.jwtSecret, {
@@ -86,11 +86,53 @@ class AuthService {
     return { token, user: this._sanitizeUser(user), isNewUser };
   }
 
-  register(userId, data) {
+  async demoLogin(role) {
+    if (!ALLOWED_ROLES.includes(role)) {
+      throw Object.assign(new Error('Недопустимая демо-роль'), { status: 400 });
+    }
+
+    const phone = role === 'driver' ? '+77000001002' : '+77000001001';
+    const db = getDb();
+    let user = await db.get('SELECT * FROM users WHERE phone = ?', [phone]);
+
+    if (!user) {
+      const userId = uuidv4();
+      if (role === 'driver') {
+        await db.run(`
+          INSERT INTO users (id, phone, name, role, car_brand, car_model, car_color, car_plate)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `, [userId, phone, 'Демо водитель', 'driver', 'Toyota', 'Camry', 'Белый', '001 JTI 10']);
+      } else {
+        await db.run('INSERT INTO users (id, phone, name, role) VALUES (?, ?, ?, ?)', [
+          userId,
+          phone,
+          'Демо клиент',
+          'client',
+        ]);
+      }
+      user = await db.get('SELECT * FROM users WHERE id = ?', [userId]);
+    }
+
+    const token = jwt.sign({ userId: user.id, role: user.role }, config.jwtSecret, {
+      expiresIn: config.jwtExpiresIn,
+    });
+
+    return { token, user: this._sanitizeUser(user), isNewUser: false };
+  }
+
+  async register(userId, data) {
     const db = getDb();
     const { name, role, carBrand, carModel, carColor, carPlate } = data;
+    const currentUser = await db.get('SELECT * FROM users WHERE id = ?', [userId]);
 
-    if (!name || !role) {
+    if (!currentUser) {
+      throw Object.assign(new Error('Пользователь не найден'), { status: 404 });
+    }
+
+    const isAdmin = currentUser.role === 'admin';
+    const nextRole = isAdmin ? 'admin' : role;
+
+    if (!name || !nextRole) {
       throw Object.assign(new Error('Имя и роль обязательны'), { status: 400 });
     }
 
@@ -101,16 +143,16 @@ class AuthService {
     }
 
     // Block admin role assignment via API
-    if (!ALLOWED_ROLES.includes(role)) {
+    if (!isAdmin && !ALLOWED_ROLES.includes(nextRole)) {
       throw Object.assign(new Error('Недопустимая роль. Доступные: client, driver'), { status: 403 });
     }
 
-    if (role === 'driver' && !carPlate) {
+    if (nextRole === 'driver' && !carPlate) {
       throw Object.assign(new Error('Госномер обязателен для водителя'), { status: 400 });
     }
 
-    const updates = { name: sanitizedName, role };
-    if (role === 'driver') {
+    const updates = { name: sanitizedName, role: nextRole };
+    if (nextRole === 'driver') {
       Object.assign(updates, {
         car_brand: carBrand ? String(carBrand).trim().substring(0, 50) : null,
         car_model: carModel ? String(carModel).trim().substring(0, 50) : null,
@@ -122,10 +164,10 @@ class AuthService {
     const setClauses = Object.keys(updates).map(k => `${k} = ?`).join(', ');
     const values = Object.values(updates);
 
-    db.prepare(`UPDATE users SET ${setClauses}, updated_at = datetime('now') WHERE id = ?`).run(...values, userId);
+    await db.run(`UPDATE users SET ${setClauses}, updated_at = datetime('now') WHERE id = ?`, [...values, userId]);
 
     // Re-fetch user with potentially updated role
-    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
+    const user = await db.get('SELECT * FROM users WHERE id = ?', [userId]);
 
     // Check if admin already had admin role — preserve it
     const tokenRole = user.role;
@@ -136,9 +178,9 @@ class AuthService {
     return { token, user: this._sanitizeUser(user) };
   }
 
-  getUser(userId) {
+  async getUser(userId) {
     const db = getDb();
-    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
+    const user = await db.get('SELECT * FROM users WHERE id = ?', [userId]);
     if (!user) throw Object.assign(new Error('Пользователь не найден'), { status: 404 });
     return this._sanitizeUser(user);
   }
@@ -154,6 +196,7 @@ class AuthService {
       carColor: user.car_color,
       carPlate: user.car_plate,
       isOnline: !!user.is_online,
+      isBlocked: !!user.is_blocked,
       createdAt: user.created_at,
     };
   }

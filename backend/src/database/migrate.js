@@ -1,9 +1,11 @@
-const { getDb } = require('../config/database');
+const { getDb, getDbKind } = require('../config/database');
+const { seedDemoData } = require('./seedDemoData');
 
-function migrate() {
+async function migrate() {
   const db = getDb();
+  const isPostgres = getDbKind() === 'postgres';
 
-  db.exec(`
+  await db.exec(`
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
       phone TEXT UNIQUE NOT NULL,
@@ -25,6 +27,9 @@ function migrate() {
       id TEXT PRIMARY KEY,
       client_id TEXT NOT NULL REFERENCES users(id),
       driver_id TEXT REFERENCES users(id),
+      pickup_address TEXT,
+      dropoff_address TEXT,
+      comment TEXT,
       pickup_lat REAL NOT NULL,
       pickup_lng REAL NOT NULL,
       dropoff_lat REAL NOT NULL,
@@ -63,13 +68,37 @@ function migrate() {
     CREATE INDEX IF NOT EXISTS idx_users_phone ON users(phone);
   `);
 
+  if (isPostgres) {
+    await db.exec(`
+      ALTER TABLE orders ADD COLUMN IF NOT EXISTS pickup_address TEXT;
+      ALTER TABLE orders ADD COLUMN IF NOT EXISTS dropoff_address TEXT;
+      ALTER TABLE orders ADD COLUMN IF NOT EXISTS comment TEXT;
+    `);
+  } else {
+    const orderColumns = (await db.all('PRAGMA table_info(orders)')).map(col => col.name);
+    if (!orderColumns.includes('pickup_address')) {
+      await db.exec('ALTER TABLE orders ADD COLUMN pickup_address TEXT');
+    }
+    if (!orderColumns.includes('dropoff_address')) {
+      await db.exec('ALTER TABLE orders ADD COLUMN dropoff_address TEXT');
+    }
+    if (!orderColumns.includes('comment')) {
+      await db.exec('ALTER TABLE orders ADD COLUMN comment TEXT');
+    }
+  }
+
   console.log('✅ Database migrated successfully');
+  await seedDemoData();
 }
 
 // Run directly
 if (require.main === module) {
-  migrate();
-  process.exit(0);
+  migrate()
+    .then(() => process.exit(0))
+    .catch((error) => {
+      console.error(error);
+      process.exit(1);
+    });
 }
 
 module.exports = { migrate };
