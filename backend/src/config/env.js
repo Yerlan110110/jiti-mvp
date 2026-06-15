@@ -31,7 +31,10 @@ function cleanJwtExpiresIn(value, fallback = '30d') {
     .trim();
   const match = normalized.match(/\b(\d+\s*(?:ms|s|m|h|d|w|y)?)\b/i);
 
-  if (match) return match[1].replace(/\s+/g, '').toLowerCase();
+  if (match) {
+    const expiresIn = match[1].replace(/\s+/g, '').toLowerCase();
+    return /^\d+$/.test(expiresIn) ? `${expiresIn}d` : expiresIn;
+  }
 
   console.warn(`⚠️  JWT_EXPIRES_IN is invalid, using ${fallback}`);
   return fallback;
