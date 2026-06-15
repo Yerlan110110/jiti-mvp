@@ -25,6 +25,18 @@ function cleanEnvString(value, fallback) {
   return normalized || fallback;
 }
 
+function cleanJwtExpiresIn(value, fallback = '30d') {
+  const normalized = cleanEnvString(value, fallback)
+    .replace(/[\\'"`“”]/g, '')
+    .trim();
+  const match = normalized.match(/\b(\d+\s*(?:ms|s|m|h|d|w|y)?)\b/i);
+
+  if (match) return match[1].replace(/\s+/g, '').toLowerCase();
+
+  console.warn(`⚠️  JWT_EXPIRES_IN is invalid, using ${fallback}`);
+  return fallback;
+}
+
 const env = {
   port: process.env.PORT || 3000,
   nodeEnv: process.env.NODE_ENV || 'development',
@@ -37,7 +49,7 @@ const env = {
         console.warn('⚠️  JWT_SECRET не задан! Сгенерирован временный ключ.');
         return generated;
       })(),
-  jwtExpiresIn: cleanEnvString(process.env.JWT_EXPIRES_IN, '7d'),
+  jwtExpiresIn: cleanJwtExpiresIn(process.env.JWT_EXPIRES_IN),
 
   smsMock: process.env.SMS_MOCK === 'true',
   smsMockCode: process.env.SMS_MOCK_CODE || '1234',
