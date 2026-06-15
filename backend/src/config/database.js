@@ -63,6 +63,14 @@ function createSqliteDb() {
 
 function createPostgresDb() {
   const { Pool } = require('pg');
+  const dbHost = (() => {
+    try {
+      return new URL(config.databaseUrl).hostname;
+    } catch (_) {
+      return 'unknown-host';
+    }
+  })();
+  console.log(`Postgres database connected: ${dbHost}`);
   const pool = new Pool({
     connectionString: config.databaseUrl,
     ssl: config.databaseUrl.includes('localhost') || config.databaseUrl.includes('127.0.0.1')

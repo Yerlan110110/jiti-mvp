@@ -1,6 +1,12 @@
 require('dotenv').config();
 const crypto = require('crypto');
 
+function cleanEnvString(value, fallback) {
+  const raw = value == null ? fallback : String(value);
+  const trimmed = raw.trim();
+  return trimmed.replace(/^['"]|['"]$/g, '') || fallback;
+}
+
 const env = {
   port: process.env.PORT || 3000,
   nodeEnv: process.env.NODE_ENV || 'development',
@@ -13,7 +19,7 @@ const env = {
         console.warn('⚠️  JWT_SECRET не задан! Сгенерирован временный ключ.');
         return generated;
       })(),
-  jwtExpiresIn: process.env.JWT_EXPIRES_IN || '7d',
+  jwtExpiresIn: cleanEnvString(process.env.JWT_EXPIRES_IN, '7d'),
 
   smsMock: process.env.SMS_MOCK === 'true',
   smsMockCode: process.env.SMS_MOCK_CODE || '1234',
