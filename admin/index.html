@@ -738,8 +738,10 @@
         async function loadMonitoring() {
             if (!monitoringMap) {
                 monitoringMap = L.map('monitoring-map').setView([51.1694, 71.4491], 13);
-                L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                    attribution: '&copy; OpenStreetMap'
+                L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+                    attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+                    subdomains: 'abcd',
+                    maxZoom: 20
                 }).addTo(monitoringMap);
                 setTimeout(() => monitoringMap.invalidateSize(), 200);
             }
