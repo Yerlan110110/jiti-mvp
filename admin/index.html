@@ -322,6 +322,19 @@
             margin-bottom: 24px;
         }
 
+        .driver-car-marker {
+            width: 38px;
+            height: 38px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #fbbf24, #f59e0b);
+            border: 3px solid #fff;
+            border-radius: 50%;
+            box-shadow: 0 8px 18px rgba(245, 158, 11, 0.35);
+            font-size: 20px;
+        }
+
         /* Page sections */
         .page { display: none; }
         .page.active { display: block; }
@@ -553,6 +566,13 @@
         let mapMarkers = [];
         let currentOrderFilter = '';
         const JITIKARA_CENTER = [52.1908, 61.2006];
+        const driverCarIcon = L.divIcon({
+            className: '',
+            html: '<div class="driver-car-marker">🚕</div>',
+            iconSize: [38, 38],
+            iconAnchor: [19, 19],
+            popupAnchor: [0, -20],
+        });
 
         // Auth
         async function ensureAdmin() {
@@ -744,8 +764,6 @@
                     subdomains: 'abcd',
                     maxZoom: 20
                 }).addTo(monitoringMap);
-                L.marker(JITIKARA_CENTER).addTo(monitoringMap)
-                    .bindPopup('<b>Житикара</b><br>Рабочая зона Jiti');
                 setTimeout(() => monitoringMap.invalidateSize(), 200);
             }
 
@@ -758,8 +776,8 @@
                 const tbody = document.getElementById('online-drivers-table');
                 tbody.innerHTML = data.map(d => {
                     if (d.lat && d.lng) {
-                        const marker = L.marker([d.lat, d.lng]).addTo(monitoringMap)
-                            .bindPopup(`<b>${d.name || 'Водитель'}</b><br>${d.carBrand || ''} ${d.carModel || ''}<br>${d.carPlate || ''}`);
+                        const marker = L.marker([d.lat, d.lng], { icon: driverCarIcon }).addTo(monitoringMap)
+                            .bindPopup(`<b>🚕 ${d.name || 'Водитель'}</b><br>${d.phone || ''}<br>${d.carBrand || ''} ${d.carModel || ''}<br>${d.carPlate || ''}`);
                         mapMarkers.push(marker);
                     }
                     return `
