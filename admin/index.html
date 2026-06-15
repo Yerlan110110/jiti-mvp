@@ -552,6 +552,7 @@
         let monitoringMap = null;
         let mapMarkers = [];
         let currentOrderFilter = '';
+        const JITIKARA_CENTER = [52.1908, 61.2006];
 
         // Auth
         async function ensureAdmin() {
@@ -737,12 +738,14 @@
         // Monitoring
         async function loadMonitoring() {
             if (!monitoringMap) {
-                monitoringMap = L.map('monitoring-map').setView([51.1694, 71.4491], 13);
+                monitoringMap = L.map('monitoring-map').setView(JITIKARA_CENTER, 13);
                 L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
                     attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
                     subdomains: 'abcd',
                     maxZoom: 20
                 }).addTo(monitoringMap);
+                L.marker(JITIKARA_CENTER).addTo(monitoringMap)
+                    .bindPopup('<b>Житикара</b><br>Рабочая зона Jiti');
                 setTimeout(() => monitoringMap.invalidateSize(), 200);
             }
 
@@ -768,6 +771,12 @@
                         </tr>
                     `;
                 }).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--text-hint);padding:40px">Нет водителей онлайн</td></tr>';
+
+                if (mapMarkers.length) {
+                    monitoringMap.fitBounds(L.featureGroup(mapMarkers).getBounds().pad(0.25), { maxZoom: 14 });
+                } else {
+                    monitoringMap.setView(JITIKARA_CENTER, 13);
+                }
             } catch(e) { console.error(e); }
         }
 

@@ -20,15 +20,35 @@ class LocationService {
     return driverLocations.get(driverId) || null;
   }
 
-  getAllOnlineDriverLocations() {
-    const result = [];
+  async getAllOnlineDriverLocations() {
+    const db = getDb();
+    const onlineDrivers = await db.all(`
+      SELECT id, latitude, longitude
+      FROM users
+      WHERE role = 'driver'
+        AND is_online = 1
+        AND latitude IS NOT NULL
+        AND longitude IS NOT NULL
+    `);
+
+    const locationsByDriver = new Map();
+    for (const driver of onlineDrivers) {
+      locationsByDriver.set(driver.id, {
+        driverId: driver.id,
+        lat: driver.latitude,
+        lng: driver.longitude,
+        updatedAt: null,
+      });
+    }
+
     for (const [driverId, loc] of driverLocations) {
       // Only include recent updates (last 60 seconds)
       if (Date.now() - loc.updatedAt < 60000) {
-        result.push({ driverId, ...loc });
+        locationsByDriver.set(driverId, { driverId, ...loc });
       }
     }
-    return result;
+
+    return Array.from(locationsByDriver.values());
   }
 
   async setDriverOnline(driverId, online) {

@@ -37,7 +37,7 @@ class AdminController {
 
   async getOnlineDrivers(req, res, next) {
     try {
-      const locations = locationService.getAllOnlineDriverLocations();
+      const locations = await locationService.getAllOnlineDriverLocations();
       const db = getDb();
       const drivers = await Promise.all(locations.map(async loc => {
         const driver = await db.get('SELECT * FROM users WHERE id = ?', [loc.driverId]);
