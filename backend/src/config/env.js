@@ -3,8 +3,26 @@ const crypto = require('crypto');
 
 function cleanEnvString(value, fallback) {
   const raw = value == null ? fallback : String(value);
-  const trimmed = raw.trim();
-  return trimmed.replace(/^['"]|['"]$/g, '') || fallback;
+  let normalized = raw.trim();
+
+  for (let i = 0; i < 3; i += 1) {
+    const before = normalized;
+    normalized = normalized
+      .replace(/^\\+|\\+$/g, '')
+      .replace(/^['"`“”]+|['"`“”]+$/g, '')
+      .trim();
+
+    try {
+      const parsed = JSON.parse(normalized);
+      if (typeof parsed === 'string') normalized = parsed.trim();
+    } catch (_) {
+      // Not JSON-wrapped, keep the cleaned value.
+    }
+
+    if (normalized === before) break;
+  }
+
+  return normalized || fallback;
 }
 
 const env = {
